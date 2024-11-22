@@ -6,7 +6,6 @@ mod lrng;
 use std::{error::Error, future::pending};
 use zbus::{connection, interface};
 use lrng::fill_random_octets;
-use error::Error as RngError;
 use log::{error, info, debug};
 
 struct RemoteQrngXorLinuxRng {
@@ -30,7 +29,10 @@ impl RemoteQrngXorLinuxRng {
         const MAX_OCTETS: usize = 1024; // Define a reasonable maximum
 
         if num_octets > MAX_OCTETS {
-            error!("Requested number of octets ({}) exceeds the maximum allowed ({})", num_octets, MAX_OCTETS);
+            error!(
+                "Requested number of octets ({}) exceeds the maximum allowed ({})",
+                num_octets, MAX_OCTETS
+            );
             return (4, Vec::new()); // Status code `4` for invalid input
         }
 
@@ -39,7 +41,7 @@ impl RemoteQrngXorLinuxRng {
             Ok(octets) => {
                 debug!("Generated {} octets successfully.", num_octets);
                 (0, octets)
-            },
+            }
             Err(e) => {
                 error!("Error generating random octets: {:?}", e);
                 (e.to_status_code(), Vec::new())
@@ -54,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
     let rng_service = RemoteQrngXorLinuxRng { count: 0 };
-    let connection = connection::Builder::session()?
+    let _connection = connection::Builder::session()?
         .name("lv.lumii.qrng")?
         .serve_at("/lv/lumii/qrng/RemoteQrngXorLinuxRng", rng_service)?
         .build()

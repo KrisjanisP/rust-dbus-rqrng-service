@@ -3,7 +3,7 @@
 use std::fmt;
 
 /// Custom `Error` type for handling RNG-related errors.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     /// Indicates that no positive errno was set.
     ErrnoNotPositive,
@@ -35,9 +35,9 @@ impl Error {
     /// Maps the custom `Error` type to specific status codes.
     pub fn to_status_code(&self) -> u32 {
         match self {
-            Error::ErrnoNotPositive => 2,
-            Error::Unexpected => 3,
-            Error::OsError(_) => 1,
+            Error::ErrnoNotPositive => 2, // No positive errno set
+            Error::Unexpected => 3,        // Unexpected error
+            Error::OsError(_) => 1,        // OS-specific error
             // Add more mappings as needed
         }
     }

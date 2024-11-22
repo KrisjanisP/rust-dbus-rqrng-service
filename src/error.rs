@@ -1,5 +1,3 @@
-// src/error.rs
-
 use std::fmt;
 
 /// Custom `Error` type for handling RNG-related errors.
@@ -35,10 +33,9 @@ impl Error {
     /// Maps the custom `Error` type to specific status codes.
     pub fn to_status_code(&self) -> u32 {
         match self {
+            Error::OsError(_) => 1,       // OS-specific error
             Error::ErrnoNotPositive => 2, // No positive errno set
-            Error::Unexpected => 3,        // Unexpected error
-            Error::OsError(_) => 1,        // OS-specific error
-            // Add more mappings as needed
+            Error::Unexpected => 3,       // Unexpected error
         }
     }
 }

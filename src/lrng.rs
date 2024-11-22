@@ -1,5 +1,3 @@
-// src/lrng.rs
-
 use crate::error::Error;
 use libc;
 use std::convert::TryFrom;

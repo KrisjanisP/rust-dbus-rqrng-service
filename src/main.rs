@@ -1,5 +1,3 @@
-// src/main.rs
-
 mod error;
 mod lrng;
 

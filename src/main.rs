@@ -1,10 +1,20 @@
 mod error;
 mod lrng;
+mod mock_rng;
 
-use std::{error::Error, future::pending};
+use std::{error::Error, future::pending, sync::Mutex};
+use mock_rng::MockRng;
 use zbus::{connection, interface};
-use lrng::fill_random_octets;
+// use lrng::os_fill_rand_octets;
 use log::{error, info, debug};
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref MOCK_RNG: Mutex<MockRng> = Mutex::new(
+        MockRng::new("./data/mock-dev-random.bin")
+            .expect("Failed to initialize mock RNG")
+    );
+}
 
 struct RemoteQrngXorLinuxRng {
     count: u64,
@@ -34,17 +44,36 @@ impl RemoteQrngXorLinuxRng {
             return (4, Vec::new()); // Status code `4` for invalid input
         }
 
-        self.count += 1;
-        match fill_random_octets(num_octets) {
-            Ok(octets) => {
-                debug!("Generated {} octets successfully.", num_octets);
-                (0, octets)
-            }
+        match MOCK_RNG.lock() {
+            Ok(mut rng) => {
+                match rng.read_bytes(num_octets) {
+                    Ok(octets) => {
+                        debug!("Generated {} octets successfully.", num_octets);
+                        (0, octets)
+                    },
+                    Err(e) => {
+                        error!("Error reading from mock RNG: {:?}", e);
+                        (1, Vec::new())
+                    }
+                }
+            },
             Err(e) => {
-                error!("Error generating random octets: {:?}", e);
-                (e.to_status_code(), Vec::new())
+                error!("Failed to acquire mock RNG lock: {:?}", e);
+                (2, Vec::new())
             }
         }
+
+        // self.count += 1;
+        // match os_fill_rand_octets(num_octets) {
+        //     Ok(octets) => {
+        //         debug!("Generated {} octets successfully.", num_octets);
+        //         (0, octets)
+        //     }
+        //     Err(e) => {
+        //         error!("Error generating random octets: {:?}", e);
+        //         (e.to_status_code(), Vec::new())
+        //     }
+        // }
     }
 }
 

@@ -61,7 +61,7 @@ fn sys_fill_exact(
 /// # Returns
 ///
 /// A `Result` containing the vector of random octets on success, or an `Error` on failure.
-pub fn fill_random_octets(num_octets: usize) -> Result<Vec<u8>, Error> {
+pub fn os_fill_rand_octets(num_octets: usize) -> Result<Vec<u8>, Error> {
     // Allocate a buffer with uninitialized memory
     let mut buffer: Vec<MaybeUninit<u8>> = Vec::with_capacity(num_octets);
     // It's safe to assume the capacity is set correctly
@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn test_fill_random_octets_success() {
         let num_octets = 16;
-        let result = fill_random_octets(num_octets);
+        let result = os_fill_rand_octets(num_octets);
         assert!(result.is_ok());
         let octets = result.unwrap();
         assert_eq!(octets.len(), num_octets);
@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn test_fill_random_octets_zero() {
         let num_octets = 0;
-        let result = fill_random_octets(num_octets);
+        let result = os_fill_rand_octets(num_octets);
         assert!(result.is_ok());
         let octets = result.unwrap();
         assert_eq!(octets.len(), num_octets);
@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn test_fill_random_octets_max() {
         let num_octets = 1024;
-        let result = fill_random_octets(num_octets);
+        let result = os_fill_rand_octets(num_octets);
         assert!(result.is_ok());
         let octets = result.unwrap();
         assert_eq!(octets.len(), num_octets);

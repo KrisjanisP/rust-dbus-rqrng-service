@@ -2,7 +2,6 @@ use crate::error::Error;
 use libc;
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
-use cfg_if::cfg_if;
 
 /// Retrieves the last OS error.
 fn last_os_error() -> Error {

@@ -2,22 +2,20 @@ use crate::error::Error;
 use libc;
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
-use cfg_if::cfg_if;
 
 /// Retrieves the last OS error.
 fn last_os_error() -> Error {
-    cfg_if! {
-        if #[cfg(target_os = "linux")] {
-            let errno: libc::c_int = unsafe { *libc::__errno_location() };
-            match u32::try_from(errno) {
-                Ok(code) if code != 0 => Error::OsError(code),
-                _ => Error::ErrnoNotPositive,
-            }
-        } else {
-            // For non-Linux systems, this function should not be called.
-            Error::Unexpected
+    #[cfg(target_os = "linux")]
+    {
+        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+        match u32::try_from(errno) {
+            Ok(code) if code != 0 => Error::OsError(code),
+            _ => Error::ErrnoNotPositive,
         }
     }
+    #[cfg(not(target_os = "linux"))]
+    // For non-Linux systems, this function should not be called.
+    Error::Unexpected
 }
 
 /// Fill a buffer by repeatedly invoking `sys_fill`.

@@ -104,6 +104,12 @@ fi
 
 The next D-Bus request will auto-start the service again.
 
+## Viewing error logs
+
+```bash
+journalctl --user -u dbus.service -e --since "5 minutes ago" | grep lv.lumii.trng
+```
+
 ## Core algorithm
 
 Generate command:

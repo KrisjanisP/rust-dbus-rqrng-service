@@ -1,35 +1,26 @@
 mod error;
 mod lrng;
-mod mock_rng;
-mod two_source_xor;
+mod config;
+mod sources;
+mod aggregator;
 
-use mock_rng::MockRng;
 use std::{error::Error, future::pending, time::Duration};
-use tokio::{sync::Mutex, time::Instant};
-use two_source_xor::TwoSourceRng;
+use tokio::time::Instant;
 use zbus::{connection, interface};
 // use lrng::os_fill_rand_octets;
 use log::{debug, error, info};
+use aggregator::Aggregator;
+use config::load_config;
 
-struct RemoteQrngXorLinuxRng {
-    mock_rng: Mutex<MockRng>,
-    two_source_rng: Mutex<TwoSourceRng>,
-}
+struct RemoteQrngXorLinuxRng(Aggregator);
 
 impl RemoteQrngXorLinuxRng {
     async fn new() -> Self {
-        Self {
-            mock_rng: Mutex::new(
-                MockRng::new("/dev/urandom")
-                    .await
-                    .expect("Failed to initialize mock RNG"),
-            ),
-            two_source_rng: Mutex::new(
-                TwoSourceRng::new("/dev/random", "/dev/urandom")
-                    .await
-                    .expect("Failed to initialize two source rng"),
-            ),
-        }
+        let cfg = load_config(None);
+        let aggregator = Aggregator::from_config(cfg)
+            .await
+            .expect("Failed to initialize aggregator from config");
+        Self(aggregator)
     }
 }
 
@@ -37,7 +28,7 @@ static MAX_BYTES: usize = 1024; // Maximum bytes to serve
 
 #[interface(name = "lv.lumii.qrng.Rng")]
 impl RemoteQrngXorLinuxRng {
-    /// Generates random octets using two sources of RNG.
+    /// Generates random octets using configured entropy sources.
     ///
     /// # Arguments
     ///
@@ -57,19 +48,20 @@ impl RemoteQrngXorLinuxRng {
             return (4, Vec::new()); // Status code `4` for invalid input
         }
 
-        match self.two_source_rng.lock().await.read_bytes(num_bytes).await {
-            Ok(octets) => {
-                debug!("Generated {} octets successfully.", num_bytes);
+        match self.0.read_bytes(num_bytes, 0).await {
+            Ok((n, mut octets)) => {
+                debug!("Generated {} octets successfully.", n);
+                octets.truncate(n);
                 (0, octets)
             }
             Err(e) => {
-                error!("Error reading from mock RNG: {:?}", e);
+                error!("Error reading random bytes: {:?}", e);
                 (1, Vec::new())
             }
         }
     }
 
-    /// Generates random octets using two sources RNG.
+    /// Generates random octets using configured entropy sources with timeout.
     /// Returns when requested number of bytes are generated or when the timeout is reached.
     ///
     /// # Arguments
@@ -97,25 +89,18 @@ impl RemoteQrngXorLinuxRng {
             return (4, (0, Vec::new())); // Status code `4` for invalid input
         }
 
-        let deadline = Instant::now() + Duration::from_millis(timeout);
-
-        match self
-            .two_source_rng
-            .lock()
-            .await
-            .read_bytes_until(num_bytes, deadline)
-            .await
-        {
-            Ok(octets) => {
-                debug!("Generated {} octets successfully.", num_bytes);
+        match self.0.read_bytes(num_bytes, timeout).await {
+            Ok((n, mut octets)) => {
+                debug!("Generated {} octets successfully.", n);
                 debug!(
                     "Generation took {} miliseconds",
                     (Instant::now() - method_invoked).as_millis()
                 );
-                (0, octets)
+                octets.truncate(n);
+                (0, (n, octets))
             }
             Err(e) => {
-                error!("Error reading from mock RNG: {:?}", e);
+                error!("Error reading random bytes: {:?}", e);
                 (1, (0, Vec::new()))
             }
         }

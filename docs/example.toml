@@ -1,0 +1,17 @@
+[[sources]]
+combine="xor"
+
+[[sources.lrng]]
+key="linux-dev-random"
+enabled=false
+
+[[sources.file]]
+key="idq-quantis"
+enabled=false
+path="/dev/qrandom0"
+buffer_mebibytes=128
+
+[[sources.file]]
+key="some-file"
+path="some_file.bin"
+loop=true

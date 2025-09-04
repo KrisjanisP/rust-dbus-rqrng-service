@@ -11,14 +11,12 @@ use log::{error, info};
 use aggregator::Aggregator;
 use config::load_config;
 
+const DEFAULT_CONFIG_PATH: &str = "/etc/trng-dbus/config.toml";
+
 struct SourceXorAggregator(Aggregator);
 
 impl SourceXorAggregator {
-    async fn new() -> Self {
-        let cfg = load_config(None);
-        let aggregator = Aggregator::from_config(cfg)
-            .await
-            .expect("Failed to initialize aggregator from config");
+    fn new(aggregator: Aggregator) -> Self {
         Self(aggregator)
     }
 }
@@ -46,7 +44,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     env_logger::init();
 
-    let rng_service = SourceXorAggregator::new().await;
+    let cfg = load_config(DEFAULT_CONFIG_PATH)
+        .expect("Failed to load config");
+    let aggregator = Aggregator::from_config(cfg)
+        .await
+        .expect("Failed to initialize aggregator from config");
+    let rng_service = SourceXorAggregator::new(aggregator);
     let _connection = connection::Builder::session()?
         .name("lv.lumii.trng")?
         .serve_at("/lv/lumii/trng/SourceXorAggregator", rng_service)?

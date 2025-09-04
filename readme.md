@@ -69,7 +69,6 @@ These calls auto-start the service if it's not already running.
 busctl --user introspect lv.lumii.trng /lv/lumii/trng/SourceXorAggregator
 ```
 
-
 - Call `ReadBytes(num_bytes, timeout_ms)` on interface `lv.lumii.trng.Rng`
   Returns `(n, bytes)` where `n` is the number of bytes produced.
 ```bash

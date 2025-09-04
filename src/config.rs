@@ -4,8 +4,6 @@ use std::fs;
 use std::path::Path;
 use log::error;
 
-pub const DEFAULT_CONFIG_PATH: &str = "/etc/trng-dbus/config.toml";
-
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct Config {
     #[serde(default)]
@@ -49,15 +47,19 @@ pub struct FlattenedConfig {
     pub file_sources: Vec<FileConfig>,
 }
 
-pub fn load_config(path: Option<&str>) -> FlattenedConfig {
-    let path = path.unwrap_or(DEFAULT_CONFIG_PATH);
-    let cfg: Config = if Path::new(path).exists() {
-        let content = fs::read_to_string(path)
-            .unwrap_or_else(|_| String::new());
-        toml::from_str(&content).unwrap_or_default()
-    } else {
-        Config::default()
-    };
+pub fn load_config(path: &str) -> Result<FlattenedConfig, Box<dyn std::error::Error>> {
+    
+    if !Path::new(path).exists() {
+        return Err(format!("Config file not found: {}", path).into());
+    }
+    
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read config file {}: {}", path, e))?;
+    
+    let cfg: Config = toml::from_str(&content)
+        .map_err(|e| format!("Failed to parse TOML config {}: {}", path, e))?;
+    
+    log::info!("Config loaded from: {}", path);
 
     // Flatten groups
     let mut combine = CombineMode::Xor;
@@ -94,7 +96,7 @@ pub fn load_config(path: Option<&str>) -> FlattenedConfig {
         }
     }
 
-    FlattenedConfig { combine, lrng_sources, file_sources }
+    Ok(FlattenedConfig { combine, lrng_sources, file_sources })
 }
 
 fn is_valid_id(s: &str) -> bool {

@@ -60,6 +60,12 @@ pub fn load_config(path: &str) -> Result<FlattenedConfig, Box<dyn std::error::Er
         .map_err(|e| format!("Failed to parse TOML config {}: {}", path, e))?;
     
     log::info!("Config loaded from: {}", path);
+    
+    // Log what sources will be processed
+    let total_sources = cfg.sources.iter()
+        .map(|g| g.lrng.len() + g.file.len())
+        .sum::<usize>();
+    log::info!("Found {} total sources in config", total_sources);
 
     // Flatten groups
     let mut combine = CombineMode::Xor;
@@ -96,6 +102,15 @@ pub fn load_config(path: &str) -> Result<FlattenedConfig, Box<dyn std::error::Er
         }
     }
 
+    log::info!("Enabled sources: {} lrng, {} file", lrng_sources.len(), file_sources.len());
+    
+    let total_enabled = lrng_sources.len() + file_sources.len();
+    if total_enabled == 0 {
+        log::warn!("No enabled entropy sources found in config - service will fail on requests");
+    } else if total_enabled == 1 {
+        log::warn!("Only one entropy source enabled - consider enabling multiple sources for better security");
+    }
+    
     Ok(FlattenedConfig { combine, lrng_sources, file_sources })
 }
 

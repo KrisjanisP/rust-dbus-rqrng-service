@@ -10,7 +10,7 @@ use tokio::time::{sleep_until, Instant};
 
 #[async_trait]
 pub trait EntropySource: Send + Sync {
-    async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<(usize, Vec<u8>), Error>;
+    async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<Vec<u8>, Error>;
     async fn return_leftover(&self, leftover: Vec<u8>);
 }
 
@@ -27,12 +27,17 @@ impl LrngSource {
 
 #[async_trait]
 impl EntropySource for LrngSource {
-    async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<(usize, Vec<u8>), Error> {
+    async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<Vec<u8>, Error> {
+        log::debug!("LRNG source reading {} bytes with {}ms timeout", num_bytes, timeout_ms);
         if timeout_ms == 0 {
             let bytes = tokio::task::spawn_blocking(move || os_fill_rand_octets(num_bytes))
                 .await
-                .map_err(|_| Error::Unexpected)??;
-            return Ok((bytes.len(), bytes));
+                .map_err(|e| {
+                    log::error!("LRNG spawn_blocking failed: {:?}", e);
+                    Error::Unexpected
+                })??;
+            log::debug!("LRNG produced {} bytes", bytes.len());
+            return Ok(bytes);
         }
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
         let sleep = sleep_until(deadline);
@@ -40,11 +45,16 @@ impl EntropySource for LrngSource {
         let task = tokio::task::spawn_blocking(move || os_fill_rand_octets(num_bytes));
         tokio::select! {
             res = task => {
-                let bytes = res.map_err(|_| Error::Unexpected)??;
-                Ok((bytes.len(), bytes))
+                let bytes = res.map_err(|e| {
+                    log::error!("LRNG spawn_blocking failed: {:?}", e);
+                    Error::Unexpected
+                })??;
+                log::debug!("LRNG produced {} bytes", bytes.len());
+                Ok(bytes)
             }
             _ = &mut sleep => {
-                Ok((0, vec![0u8; num_bytes]))
+                log::debug!("LRNG timeout reached, returning empty vector");
+                Ok(Vec::new())
             }
         }
     }
@@ -101,13 +111,13 @@ impl FileSource {
 
 #[async_trait]
 impl EntropySource for FileSource {
-    async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<(usize, Vec<u8>), Error> {
+    async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<Vec<u8>, Error> {
         let mut buffer = self.buffer.lock().await;
         
         // First, try to satisfy request from buffer
         if buffer.len() >= num_bytes {
             let result = buffer.drain(..num_bytes).collect();
-            return Ok((num_bytes, result));
+            return Ok(result);
         }
         
         // Take what we have from buffer and read more
@@ -144,7 +154,7 @@ impl EntropySource for FileSource {
             };
             buf.truncate(bytes_read);
             result.extend(buf);
-            return Ok((result.len(), result));
+            return Ok(result);
         }
 
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
@@ -165,7 +175,7 @@ impl EntropySource for FileSource {
         }
         buf.truncate(bytes_read);
         result.extend(buf);
-        Ok((result.len(), result))
+        Ok(result)
     }
 
     async fn return_leftover(&self, leftover: Vec<u8>) {

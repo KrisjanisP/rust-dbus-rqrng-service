@@ -37,7 +37,14 @@ ln -f target/release/trngdbus ~/.local/bin/trngdbus
 > user-specific executable files may be stored in $HOME/.local/bin.
 ~ [XDG Base Directory Spec](https://specifications.freedesktop.org/basedir-spec/latest/)
 
-III. Create the D-Bus activation file pointing to that path
+III. Copy config file to user config directory
+
+```bash
+mkdir -p ~/.config/trng-dbus
+cp docs/example.toml ~/.config/trng-dbus/config.toml
+```
+
+IV. Create the D-Bus activation file pointing to that path
 
 ```bash
 mkdir -p ~/.local/share/dbus-1/services
@@ -54,7 +61,7 @@ EOF
 
 The service will be auto-started on the first session-bus request to `lv.lumii.trng`.
 
-IV. Reload D-Bus service files (no logout needed)
+V. Reload D-Bus service files (no logout needed)
 ```bash
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 ```
@@ -70,7 +77,7 @@ busctl --user introspect lv.lumii.trng /lv/lumii/trng/SourceXorAggregator
 ```
 
 - Call `ReadBytes(num_bytes, timeout_ms)` on interface `lv.lumii.trng.Rng`
-  Returns `(n, bytes)` where `n` is the number of bytes produced.
+  Returns `bytes` vector (length indicates actual bytes produced).
 ```bash
 busctl --user call \
   lv.lumii.trng \
@@ -113,7 +120,7 @@ journalctl --user -u dbus.service -e --since "5 minutes ago" | grep lv.lumii.trn
 ## Core algorithm
 
 Generate command:
-1. load entropy sources from .toml file in `/etc/trng-dbus/config.toml`
+1. load entropy sources from .toml file in `$HOME/.config/trng-dbus/config.toml`
 2. for a request, read the requested number of bytes from each enabled source
 3. await responses from source type handlers, then XOR results and return
 
@@ -131,11 +138,11 @@ Entropy source may be buffered. In that case:
 - Bus name: `lv.lumii.trng` (session bus)
 - Object path: `/lv/lumii/trng/SourceXorAggregator`
 - Interface: `lv.lumii.trng.Rng`
-- ReadBytes(num_bytes: u64, timeout_ms: u64) -> (n: u64, bytes: [u8])
+- ReadBytes(num_bytes: u64, timeout_ms: u64) -> bytes: [u8]
 
 ## Configuration (TOML)
 
-Default path: `/etc/trng-dbus/config.toml`
+Config path: `$HOME/.config/trng-dbus/config.toml` (falls back to `/etc/trng-dbus/config.toml` if `$HOME` not set)
 Example: `docs/example.toml`
 
 ```toml

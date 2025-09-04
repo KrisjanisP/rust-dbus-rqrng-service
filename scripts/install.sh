@@ -12,7 +12,11 @@ cargo build --release
 mkdir -p ~/.local/bin
 ln -f target/release/trngdbus ~/.local/bin/trngdbus
 
-# 3) Create the D-Bus activation file pointing to that path
+# 3) Copy config file to user config directory
+mkdir -p ~/.config/trng-dbus
+cp docs/example.toml ~/.config/trng-dbus/config.toml
+
+# 4) Create the D-Bus activation file pointing to that path
 mkdir -p ~/.local/share/dbus-1/services
 cat > ~/.local/share/dbus-1/services/lv.lumii.trng.service <<EOF
 [D-BUS Service]
@@ -20,8 +24,16 @@ Name=lv.lumii.trng
 Exec=$HOME/.local/bin/trngdbus
 EOF
 
-# 4) Reload D-Bus service files (no logout needed)
+# 5) Reload D-Bus service files (no logout needed)
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 
-# 5) Test the service
+# 6) Test the service
+echo "Testing service with busctl..."
+busctl --user call \
+  lv.lumii.trng \
+  /lv/lumii/trng/SourceXorAggregator \
+  lv.lumii.trng.Rng \
+  ReadBytes \
+  tt 16 1000
 
+echo "Installation complete! Service should auto-start on D-Bus requests."

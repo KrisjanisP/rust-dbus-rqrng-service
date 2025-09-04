@@ -3,7 +3,7 @@ combine="xor"
 
 [[sources.lrng]]
 id="linux-dev-random"
-enabled=false
+enabled=true
 
 [[sources.file]]
 id="idq-quantis"
@@ -13,5 +13,6 @@ buffer_mebibytes=128
 
 [[sources.file]]
 id="some-file"
+enabled=false
 path="some_file.bin"
 loop=true

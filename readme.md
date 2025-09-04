@@ -47,13 +47,13 @@ EOF
 > `$XDG_DATA_HOME/dbus-1/services`, where `XDG_DATA_HOME` defaults to `~/.local/share`
 ~ [D-Bus Specification](https://dbus.freedesktop.org/doc/dbus-daemon.1.html)
 
+The service will be auto-started on the first session-bus request to `lv.lumii.qrng`.
+
 IV. Reload D-Bus service files (no logout needed)
 ```bash
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 ```
-Now the service will be auto-started on the first session-bus request to `lv.lumii.qrng`.
 D-Bus does not monitor service dir, we must notify it that it has changed.
-
 
 ## Calling with busctl
 

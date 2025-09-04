@@ -40,20 +40,37 @@ impl Aggregator {
 
         let mut min_n = usize::MAX;
         let mut acc: Option<Vec<u8>> = None;
-        for res in results.into_iter() {
+        let mut source_results = Vec::new();
+        
+        for (i, res) in results.into_iter().enumerate() {
             let (n, buf) = res?;
             min_n = min_n.min(n);
+            source_results.push((i, n, buf));
+        }
+        
+        // XOR the common prefix
+        for (_, n, buf) in &source_results {
             match &mut acc {
-                None => acc = Some(buf),
+                None => acc = Some(buf.clone()),
                 Some(existing) => {
                     let len = existing.len().min(buf.len());
                     for i in 0..len { existing[i] ^= buf[i]; }
                 }
             }
         }
+        
         if min_n == usize::MAX { min_n = 0; }
         let mut acc = acc.ok_or(Error::Unexpected)?;
         acc.truncate(min_n);
+        
+        // Return leftover bytes to sources that produced more than min_n
+        for (i, n, buf) in source_results {
+            if n > min_n && min_n < buf.len() {
+                let leftover = buf[min_n..n].to_vec();
+                self.sources[i].return_leftover(leftover).await;
+            }
+        }
+        
         Ok((min_n, acc))
     }
 }

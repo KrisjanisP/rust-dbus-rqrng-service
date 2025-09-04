@@ -14,9 +14,9 @@ ln -f target/release/trngdbus ~/.local/bin/trngdbus
 
 # 3) Create the D-Bus activation file pointing to that path
 mkdir -p ~/.local/share/dbus-1/services
-cat > ~/.local/share/dbus-1/services/lv.lumii.qrng.service <<EOF
+cat > ~/.local/share/dbus-1/services/lv.lumii.trng.service <<EOF
 [D-BUS Service]
-Name=lv.lumii.qrng
+Name=lv.lumii.trng
 Exec=$HOME/.local/bin/trngdbus
 EOF
 

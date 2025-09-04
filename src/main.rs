@@ -4,17 +4,16 @@ mod config;
 mod sources;
 mod aggregator;
 
-use std::{error::Error, future::pending, time::Duration};
-use tokio::time::Instant;
+use std::{error::Error, future::pending};
 use zbus::{connection, interface};
 // use lrng::os_fill_rand_octets;
-use log::{debug, error, info};
+use log::{error, info};
 use aggregator::Aggregator;
 use config::load_config;
 
-struct RemoteQrngXorLinuxRng(Aggregator);
+struct SourceXorAggregator(Aggregator);
 
-impl RemoteQrngXorLinuxRng {
+impl SourceXorAggregator {
     async fn new() -> Self {
         let cfg = load_config(None);
         let aggregator = Aggregator::from_config(cfg)
@@ -24,84 +23,19 @@ impl RemoteQrngXorLinuxRng {
     }
 }
 
-static MAX_BYTES: usize = 1024; // Maximum bytes to serve
-
-#[interface(name = "lv.lumii.qrng.Rng")]
-impl RemoteQrngXorLinuxRng {
-    /// Generates random octets using configured entropy sources.
-    ///
-    /// # Arguments
-    ///
-    /// * `num_bytes` - The number of random octets to generate.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing:
-    /// - `u32`: Status code (`0` for success, non-zero for errors).
-    /// - `(usize, Vec<u8>)`: A tuple containing the number of generated octets and the generated random octets.
-    async fn generate_octets(&mut self, num_bytes: usize) -> (u32, Vec<u8>) {
-        if num_bytes > MAX_BYTES {
-            error!(
-                "Requested number of octets ({}) exceeds the maximum allowed ({})",
-                num_bytes, MAX_BYTES
-            );
-            return (4, Vec::new()); // Status code `4` for invalid input
-        }
-
-        match self.0.read_bytes(num_bytes, 0).await {
-            Ok((n, mut octets)) => {
-                debug!("Generated {} octets successfully.", n);
-                octets.truncate(n);
-                (0, octets)
+#[interface(name = "lv.lumii.trng.Rng")]
+impl SourceXorAggregator {
+    /// ReadBytes returns up to `num_bytes` of data within `timeout_ms`.
+    /// Returns (n, bytes) where n <= len(bytes) <= num_bytes.
+    async fn read_bytes(&mut self, num_bytes: u64, timeout_ms: u64) -> (u64, Vec<u8>) {
+        match self.0.read_bytes(num_bytes as usize, timeout_ms).await {
+            Ok((n, mut bytes)) => {
+                bytes.truncate(n);
+                (n as u64, bytes)
             }
             Err(e) => {
                 error!("Error reading random bytes: {:?}", e);
-                (1, Vec::new())
-            }
-        }
-    }
-
-    /// Generates random octets using configured entropy sources with timeout.
-    /// Returns when requested number of bytes are generated or when the timeout is reached.
-    ///
-    /// # Arguments
-    ///
-    /// * `num_bytes` - The number of random octets to generate.
-    /// * `timeout` - The timeout in miliseconds from when the function is called.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing:
-    /// - `u32`: Status code (`0` for success, non-zero for errors).
-    /// - `Vec<u8>`: The generated random octets.
-    async fn generate_octets_timeout(
-        &mut self,
-        num_bytes: usize,
-        timeout: u64,
-    ) -> (u32, (usize, Vec<u8>)) {
-        let method_invoked = Instant::now();
-
-        if num_bytes > MAX_BYTES {
-            error!(
-                "Requested number of octets ({}) exceeds the maximum allowed ({})",
-                num_bytes, MAX_BYTES
-            );
-            return (4, (0, Vec::new())); // Status code `4` for invalid input
-        }
-
-        match self.0.read_bytes(num_bytes, timeout).await {
-            Ok((n, mut octets)) => {
-                debug!("Generated {} octets successfully.", n);
-                debug!(
-                    "Generation took {} miliseconds",
-                    (Instant::now() - method_invoked).as_millis()
-                );
-                octets.truncate(n);
-                (0, (n, octets))
-            }
-            Err(e) => {
-                error!("Error reading random bytes: {:?}", e);
-                (1, (0, Vec::new()))
+                (0, Vec::new())
             }
         }
     }
@@ -112,14 +46,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     env_logger::init();
 
-    let rng_service = RemoteQrngXorLinuxRng::new().await;
+    let rng_service = SourceXorAggregator::new().await;
     let _connection = connection::Builder::session()?
-        .name("lv.lumii.qrng")?
-        .serve_at("/lv/lumii/qrng/RemoteQrngXorLinuxRng", rng_service)?
+        .name("lv.lumii.trng")?
+        .serve_at("/lv/lumii/trng/SourceXorAggregator", rng_service)?
         .build()
         .await?;
 
-    info!("D-Bus service 'lv.lumii.qrng' is running.");
+    info!("D-Bus service 'lv.lumii.trng' is running.");
 
     // Keep the application running indefinitely
     pending::<()>().await;

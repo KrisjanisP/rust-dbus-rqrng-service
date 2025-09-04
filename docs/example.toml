@@ -2,16 +2,16 @@
 combine="xor"
 
 [[sources.lrng]]
-key="linux-dev-random"
+id="linux-dev-random"
 enabled=false
 
 [[sources.file]]
-key="idq-quantis"
+id="idq-quantis"
 enabled=false
 path="/dev/qrandom0"
 buffer_mebibytes=128
 
 [[sources.file]]
-key="some-file"
+id="some-file"
 path="some_file.bin"
 loop=true

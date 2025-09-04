@@ -11,6 +11,7 @@ use tokio::time::{sleep_until, Instant};
 #[async_trait]
 pub trait EntropySource: Send + Sync {
     async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<(usize, Vec<u8>), Error>;
+    async fn return_leftover(&self, leftover: Vec<u8>);
 }
 
 pub struct LrngSource {
@@ -47,12 +48,17 @@ impl EntropySource for LrngSource {
             }
         }
     }
+
+    async fn return_leftover(&self, _leftover: Vec<u8>) {
+        // LRNG doesn't buffer, so we ignore leftover bytes
+    }
 }
 
 pub struct FileSource {
     file: tokio::sync::Mutex<File>,
     offset: tokio::sync::Mutex<u64>,
     loop_on_eof: bool,
+    buffer: tokio::sync::Mutex<Vec<u8>>,
 }
 
 impl FileSource {
@@ -62,6 +68,7 @@ impl FileSource {
             file: tokio::sync::Mutex::new(file),
             offset: tokio::sync::Mutex::new(0),
             loop_on_eof: cfg.loop_.unwrap_or(false),
+            buffer: tokio::sync::Mutex::new(Vec::new()),
         })
     }
 
@@ -95,21 +102,39 @@ impl FileSource {
 #[async_trait]
 impl EntropySource for FileSource {
     async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<(usize, Vec<u8>), Error> {
-        let mut buf = vec![0u8; num_bytes];
+        let mut buffer = self.buffer.lock().await;
+        
+        // First, try to satisfy request from buffer
+        if buffer.len() >= num_bytes {
+            let result = buffer.drain(..num_bytes).collect();
+            return Ok((num_bytes, result));
+        }
+        
+        // Take what we have from buffer and read more
+        let mut result = buffer.drain(..).collect::<Vec<u8>>();
+        let bytes_from_buffer = result.len();
+        let remaining = num_bytes - bytes_from_buffer;
+        
+        drop(buffer); // Release buffer lock while reading from file
+        
         let mut file = self.file.lock().await;
         let mut offset = self.offset.lock().await;
 
         if timeout_ms == 0 {
             // Single attempt, return whatever is available immediately
-            // Seek to saved offset
+            let mut buf = vec![0u8; remaining];
             file.seek(tokio::io::SeekFrom::Start(*offset))
                 .await
                 .map_err(|e| Error::OsError(e.raw_os_error().unwrap_or(0) as u32))?;
-            let mut bytes_read = match file.read(&mut buf).await {
+            let bytes_read = match file.read(&mut buf).await {
                 Ok(0) if self.loop_on_eof => {
                     file.seek(tokio::io::SeekFrom::Start(0)).await
                         .map_err(|e| Error::OsError(e.raw_os_error().unwrap_or(0) as u32))?;
-                    0
+                    *offset = 0;
+                    if let Ok(n) = file.read(&mut buf).await { 
+                        *offset = n as u64; 
+                        n 
+                    } else { 0 }
                 }
                 Ok(n) => {
                     *offset += n as u64;
@@ -117,29 +142,37 @@ impl EntropySource for FileSource {
                 }
                 Err(e) => return Err(Error::OsError(e.raw_os_error().unwrap_or(0) as u32)),
             };
-            // If we looped and want one more quick read after EOF reset
-            if bytes_read == 0 && self.loop_on_eof && num_bytes > 0 {
-                if let Ok(n) = file.read(&mut buf).await { bytes_read = n; *offset = n as u64; }
-            }
-            return Ok((bytes_read, buf));
+            buf.truncate(bytes_read);
+            result.extend(buf);
+            return Ok((result.len(), result));
         }
 
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
         let sleep = sleep_until(deadline);
         tokio::pin!(sleep);
 
+        let mut buf = vec![0u8; remaining];
         let mut bytes_read = 0usize;
         loop {
             tokio::select! {
-                res = Self::read_inner(&mut *file, &mut *offset, &mut buf[bytes_read..], self.loop_on_eof), if bytes_read < num_bytes => {
+                res = Self::read_inner(&mut *file, &mut *offset, &mut buf[bytes_read..], self.loop_on_eof), if bytes_read < remaining => {
                     let n = res?;
                     bytes_read += n;
-                    if bytes_read >= num_bytes || n == 0 { break; }
+                    if bytes_read >= remaining || n == 0 { break; }
                 }
                 _ = &mut sleep => { break; }
             }
         }
-        Ok((bytes_read, buf))
+        buf.truncate(bytes_read);
+        result.extend(buf);
+        Ok((result.len(), result))
+    }
+
+    async fn return_leftover(&self, leftover: Vec<u8>) {
+        if !leftover.is_empty() {
+            let mut buffer = self.buffer.lock().await;
+            buffer.extend(leftover);
+        }
     }
 }
 

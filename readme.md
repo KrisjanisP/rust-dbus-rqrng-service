@@ -7,6 +7,11 @@ It serves as a gateway for cryptographic applications to retrieve
 (in a buffered, safe and authenticated manner)
 data from hardware RNG devices, both local or remote.
 
+Allows for abstracting away the details of a TRNG
+such as fetching data from *Entropy-as-a-Service* over the network
+and XORing the results with the built-in `/dev/random` output.
+Or exposing a device such as IDQ Quantis to virtual machines.
+
 Quick-start & development:
 ```bash
 cargo run
@@ -36,9 +41,9 @@ III. Create the D-Bus activation file pointing to that path
 
 ```bash
 mkdir -p ~/.local/share/dbus-1/services
-cat > ~/.local/share/dbus-1/services/lv.lumii.qrng.service <<EOF
+cat > ~/.local/share/dbus-1/services/lv.lumii.trng.service <<EOF
 [D-BUS Service]
-Name=lv.lumii.qrng
+Name=lv.lumii.trng
 Exec=$HOME/.local/bin/trngdbus
 EOF
 ```
@@ -47,7 +52,7 @@ EOF
 > `$XDG_DATA_HOME/dbus-1/services`, where `XDG_DATA_HOME` defaults to `~/.local/share`
 ~ [D-Bus Specification](https://dbus.freedesktop.org/doc/dbus-daemon.1.html)
 
-The service will be auto-started on the first session-bus request to `lv.lumii.qrng`.
+The service will be auto-started on the first session-bus request to `lv.lumii.trng`.
 
 IV. Reload D-Bus service files (no logout needed)
 ```bash
@@ -60,32 +65,21 @@ D-Bus does not monitor service dir, we must notify it that it has changed.
 These calls auto-start the service if it's not already running.
 
 - Introspect to see the interface and methods
-  ```bash
-  busctl --user introspect lv.lumii.qrng /lv/lumii/qrng/RemoteQrngXorLinuxRng
-  ```
+```bash
+busctl --user introspect lv.lumii.trng /lv/lumii/trng/SourceXorAggregator
+```
 
-TODO: we changed the signature of the method, so we need to update the examples.
 
-- Call `GenerateOctets(num_bytes)` on interface `lv.lumii.qrng.Rng`
-  (use DBus type `t` for 64-bit unsigned on most systems)
-  ```bash
-  busctl --user call \
-    lv.lumii.qrng \
-    /lv/lumii/qrng/RemoteQrngXorLinuxRng \
-    lv.lumii.qrng.Rng \
-    GenerateOctets \
-    t 32
-  ```
-
-- Call `GenerateOctetsTimeout(num_bytes, timeout_ms)` on interface `lv.lumii.qrng.Rng`
-  ```bash
-  busctl --user call \
-    lv.lumii.qrng \
-    /lv/lumii/qrng/RemoteQrngXorLinuxRng \
-    lv.lumii.qrng.Rng \
-    GenerateOctetsTimeout \
-    tt 32 500
-  ```
+- Call `ReadBytes(num_bytes, timeout_ms)` on interface `lv.lumii.trng.Rng`
+  Returns `(n, bytes)` where `n` is the number of bytes produced.
+```bash
+busctl --user call \
+  lv.lumii.trng \
+  /lv/lumii/trng/SourceXorAggregator \
+  lv.lumii.trng.Rng \
+  ReadBytes \
+  tt 32 500
+```
 
 If you previously got an error like "Too few parameters for signature", ensure you pass INTERFACE and METHOD as separate arguments (as above) and include the correct signature (`t` for each 64-bit unsigned integer on 64-bit systems).
 
@@ -101,8 +95,8 @@ ln -f target/release/trngdbus ~/.local/bin/trngdbus
 
 II. Find out the PID and kill it
 ```bash
-busctl --user status lv.lumii.qrng
-OUT=$(busctl --user status lv.lumii.qrng 2>/dev/null)
+busctl --user status lv.lumii.trng
+OUT=$(busctl --user status lv.lumii.trng 2>/dev/null)
 export PID=$(echo "$OUT" | grep "^PID=" | cut -c 5-)
 if [ -n "$PID" ]; then
   kill $PID
@@ -129,10 +123,10 @@ Entropy source may be buffered. In that case:
 
 ## D-Bus information
 
-- Bus name: `lv.lumii.qrng` (session bus)
-- Object path: `/lv/lumii/qrng/SourceXorAggregator`
-- Interface: `lv.lumii.qrng.Rng`
-- Generate(num_bytes: u64) -> (status: u32, bytes: [u8])
+- Bus name: `lv.lumii.trng` (session bus)
+- Object path: `/lv/lumii/trng/SourceXorAggregator`
+- Interface: `lv.lumii.trng.Rng`
+- ReadBytes(num_bytes: u64, timeout_ms: u64) -> (n: u64, bytes: [u8])
 
 ## Configuration (TOML)
 
@@ -144,19 +138,17 @@ Example: `docs/example.toml`
 combine = "xor"
 
 [[sources.lrng]]
-key = "linux-dev-random"
+id = "linux-dev-random"
 enabled = false
 
 [[sources.file]]
-key = "idq-quantis"
+id = "idq-quantis"
 path = "/dev/qrandom0"
-enabled = false
 
 [[sources.file]]
-key = "some-file"
+id = "some-file"
 path = "some_file.bin"
 loop = true
-enabled = true
 ```
 
 Notes:

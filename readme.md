@@ -2,12 +2,12 @@
 
 True random number generator (TRNG) D-Bus service.
 
-Written primarily for Linux in Rust using zbus library.
+Written primarily for Linux in Rust using [zbus](https://github.com/dbus2/zbus) library.
 It serves as a gateway for cryptographic applications to retrieve
-(in a buffered, safe and authenticatedmanner)
+(in a buffered, safe and authenticated manner)
 data from hardware RNG devices, both local or remote.
 
-For a quick-start & development:
+Quick-start & development:
 ```bash
 cargo run
 ```
@@ -16,23 +16,23 @@ cargo run
 
 Script to automate building and installation: `scripts/install.sh`.
 
-1) Build the binary
+I. Build the binary
 
 ```bash
 cargo build --release
 ```
 
-2) Place binary at a well-known path (hard link to ~/.local/bin)
+II. Place binary at a well-known path (hard link to ~/.local/bin)
 
 ```bash
 mkdir -p ~/.local/bin
 ln -f target/release/trngdbus ~/.local/bin/trngdbus
 ```
 
-As per [XDG Base Directory Spec](https://specifications.freedesktop.org/basedir-spec/latest/), 
 > user-specific executable files may be stored in $HOME/.local/bin.
+~ [XDG Base Directory Spec](https://specifications.freedesktop.org/basedir-spec/latest/)
 
-3) Create the D-Bus activation file pointing to that path
+III. Create the D-Bus activation file pointing to that path
 
 ```bash
 mkdir -p ~/.local/share/dbus-1/services
@@ -43,12 +43,11 @@ Exec=$HOME/.local/bin/trngdbus
 EOF
 ```
 
-As per [D-Bus Specification](https://dbus.freedesktop.org/doc/dbus-daemon.1.html)
 > On Unix, the standard session service directories are
 > `$XDG_DATA_HOME/dbus-1/services`, where `XDG_DATA_HOME` defaults to `~/.local/share`
+~ [D-Bus Specification](https://dbus.freedesktop.org/doc/dbus-daemon.1.html)
 
-
-4) Reload D-Bus service files (no logout needed)
+IV. Reload D-Bus service files (no logout needed)
 ```bash
 busctl --user call org.freedesktop.DBus / org.freedesktop.DBus ReloadConfig
 ```
@@ -94,13 +93,13 @@ If you previously got an error like "Too few parameters for signature", ensure y
 
 After source code updates or `.toml` config change: `scripts/restart.sh`.
 
-1) Recompile the binary
+I. Recompile the binary
 ```bash
 cargo build --release
 ln -f target/release/trngdbus ~/.local/bin/trngdbus
 ```
 
-2) Find out the PID and kill it
+II. Find out the PID and kill it
 ```bash
 busctl --user status lv.lumii.qrng
 OUT=$(busctl --user status lv.lumii.qrng 2>/dev/null)
@@ -110,7 +109,7 @@ if [ -n "$PID" ]; then
 fi
 ```
 
-The next D-Bus request will auto-start it again.
+The next D-Bus request will auto-start the service again.
 
 ## Core algorithm
 

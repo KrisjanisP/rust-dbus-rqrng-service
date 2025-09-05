@@ -7,11 +7,11 @@ use log::error;
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct Config {
     #[serde(default)]
-    pub sources: Vec<SourcesGroup>,
+    pub sources: Sources,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
-pub struct SourcesGroup {
+pub struct Sources {
     #[serde(default)]
     pub combine: Option<String>,
     #[serde(default)]
@@ -25,6 +25,8 @@ pub struct LrngConfig {
     pub id: String,
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
+    pub buffer_mebibytes: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -35,6 +37,8 @@ pub struct FileConfig {
     pub loop_: Option<bool>,
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
+    pub buffer_mebibytes: Option<u32>,
 }
 
 pub enum CombineMode {
@@ -62,44 +66,42 @@ pub fn load_config(path: &str) -> Result<FlattenedConfig, Box<dyn std::error::Er
     log::info!("Config loaded from: {}", path);
     
     // Log what sources will be processed
-    let total_sources = cfg.sources.iter()
-        .map(|g| g.lrng.len() + g.file.len())
-        .sum::<usize>();
+    let total_sources = cfg.sources.lrng.len() + cfg.sources.file.len();
     log::info!("Found {} total sources in config", total_sources);
 
-    // Flatten groups
+    // Process sources
     let mut combine = CombineMode::Xor;
     let mut lrng_sources = Vec::new();
     let mut file_sources = Vec::new();
     let mut seen_ids: HashSet<String> = HashSet::new();
-    for group in cfg.sources.into_iter() {
-        if let Some(c) = group.combine.as_deref() {
-            if c.eq_ignore_ascii_case("xor") {
-                combine = CombineMode::Xor;
-            }
+    
+    if let Some(c) = cfg.sources.combine.as_deref() {
+        if c.eq_ignore_ascii_case("xor") {
+            combine = CombineMode::Xor;
         }
-        for s in group.lrng.into_iter().filter(|s| s.enabled) {
-            if !is_valid_id(&s.id) {
-                error!("Invalid source id '{}'. Use [a-z0-9][a-z0-9_-]*", s.id);
-                continue;
-            }
-            if !seen_ids.insert(s.id.clone()) {
-                error!("Duplicate source id '{}' - skipping", s.id);
-                continue;
-            }
-            lrng_sources.push(s);
+    }
+    
+    for s in cfg.sources.lrng.into_iter().filter(|s| s.enabled) {
+        if !is_valid_id(&s.id) {
+            error!("Invalid source id '{}'. Use [a-z0-9][a-z0-9_-]*", s.id);
+            continue;
         }
-        for s in group.file.into_iter().filter(|s| s.enabled) {
-            if !is_valid_id(&s.id) {
-                error!("Invalid source id '{}'. Use [a-z0-9][a-z0-9_-]*", s.id);
-                continue;
-            }
-            if !seen_ids.insert(s.id.clone()) {
-                error!("Duplicate source id '{}' - skipping", s.id);
-                continue;
-            }
-            file_sources.push(s);
+        if !seen_ids.insert(s.id.clone()) {
+            error!("Duplicate source id '{}' - skipping", s.id);
+            continue;
         }
+        lrng_sources.push(s);
+    }
+    for s in cfg.sources.file.into_iter().filter(|s| s.enabled) {
+        if !is_valid_id(&s.id) {
+            error!("Invalid source id '{}'. Use [a-z0-9][a-z0-9_-]*", s.id);
+            continue;
+        }
+        if !seen_ids.insert(s.id.clone()) {
+            error!("Duplicate source id '{}' - skipping", s.id);
+            continue;
+        }
+        file_sources.push(s);
     }
 
     log::info!("Enabled sources: {} lrng, {} file", lrng_sources.len(), file_sources.len());

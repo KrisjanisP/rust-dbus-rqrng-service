@@ -3,6 +3,7 @@ mod lrng;
 mod config;
 mod sources;
 mod aggregator;
+mod circular_buffer;
 
 use std::{error::Error, future::pending};
 use zbus::{connection, interface};
@@ -30,13 +31,18 @@ impl SourceXorAggregator {
 #[interface(name = "lv.lumii.trng.Rng")]
 impl SourceXorAggregator {
     /// ReadBytes returns up to `num_bytes` of data within `timeout_ms`.
-    /// Returns bytes vector (length indicates actual bytes produced).
-    async fn read_bytes(&mut self, num_bytes: u64, timeout_ms: u64) -> Vec<u8> {
+    /// Returns (status, bytes) where status is 0 for success, negative for errors.
+    async fn read_bytes(&mut self, num_bytes: u64, timeout_ms: u64) -> (i32, Vec<u8>) {
         match self.0.read_bytes(num_bytes as usize, timeout_ms).await {
-            Ok(bytes) => bytes,
+            Ok(bytes) => (0, bytes),
             Err(e) => {
                 error!("Error reading random bytes: {:?}", e);
-                Vec::new()
+                let status = match e {
+                    crate::error::Error::OsError(_) => -1,
+                    crate::error::Error::ErrnoNotPositive => -2,
+                    crate::error::Error::Unexpected => -3,
+                };
+                (status, Vec::new())
             }
         }
     }

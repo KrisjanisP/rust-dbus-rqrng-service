@@ -3,11 +3,15 @@ use crate::error::Error;
 use crate::sources::{EntropySource, FileSource, LrngSource};
 use futures::future::join_all;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::time::{interval, Duration};
 
 pub struct Aggregator {
     #[allow(dead_code)]
     combine: CombineMode,
     sources: Vec<Arc<dyn EntropySource>>,
+    bytes_served: Arc<AtomicU64>,
+    requests_served: Arc<AtomicU64>,
 }
 
 impl Aggregator {
@@ -31,7 +35,19 @@ impl Aggregator {
         }
 
         log::info!("Aggregator initialized with {} sources", sources.len());
-        Ok(Self { combine: cfg.combine, sources })
+        
+        let bytes_served = Arc::new(AtomicU64::new(0));
+        let requests_served = Arc::new(AtomicU64::new(0));
+        
+        // Start periodic logging
+        let sources_clone = sources.clone();
+        let bytes_served_clone = bytes_served.clone();
+        let requests_served_clone = requests_served.clone();
+        tokio::spawn(async move {
+            Self::periodic_logging(sources_clone, bytes_served_clone, requests_served_clone).await;
+        });
+        
+        Ok(Self { combine: cfg.combine, sources, bytes_served, requests_served })
     }
 
     pub async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<Vec<u8>, Error> {
@@ -57,7 +73,7 @@ impl Aggregator {
                     return Err(e);
                 }
             };
-            log::debug!("Source {} produced {} bytes", i, buf.len());
+            // Remove debug logging for performance
             min_len = min_len.min(buf.len());
             source_results.push((i, buf));
         }
@@ -85,7 +101,39 @@ impl Aggregator {
             }
         }
         
+        // Update statistics
+        self.requests_served.fetch_add(1, Ordering::Relaxed);
+        self.bytes_served.fetch_add(acc.len() as u64, Ordering::Relaxed);
+        
         Ok(acc)
+    }
+    
+    async fn periodic_logging(sources: Vec<Arc<dyn EntropySource>>, bytes_served: Arc<AtomicU64>, requests_served: Arc<AtomicU64>) {
+        let mut interval = interval(Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            
+            let total_bytes = bytes_served.load(Ordering::Relaxed);
+            let total_requests = requests_served.load(Ordering::Relaxed);
+            let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
+            
+            log::info!("Statistics: {} requests served, {:.2} MB total", total_requests, total_mb);
+            
+            for source in &sources {
+                let (id, buffer_status) = source.get_buffer_status().await;
+                match buffer_status {
+                    Some((current, max)) => {
+                        let current_mb = current as f64 / (1024.0 * 1024.0);
+                        let max_mb = max as f64 / (1024.0 * 1024.0);
+                        let percentage = if max > 0 { (current as f64 / max as f64) * 100.0 } else { 0.0 };
+                        log::info!("Source {}: buffer {:.2}/{:.2} MB ({:.1}%)", id, current_mb, max_mb, percentage);
+                    }
+                    None => {
+                        log::info!("Source {}: no buffer", id);
+                    }
+                }
+            }
+        }
     }
 }
 

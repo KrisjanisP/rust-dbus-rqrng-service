@@ -77,7 +77,7 @@ busctl --user introspect lv.lumii.trng /lv/lumii/trng/SourceXorAggregator
 ```
 
 - Call `ReadBytes(num_bytes, timeout_ms)` on interface `lv.lumii.trng.Rng`
-  Returns `bytes` vector (length indicates actual bytes produced).
+  Returns `(status, bytes)` where status is 0 for success, negative for errors.
 ```bash
 busctl --user call \
   lv.lumii.trng \
@@ -111,10 +111,28 @@ fi
 
 The next D-Bus request will auto-start the service again.
 
-## Viewing error logs
+## Viewing logs
+
+When running via D-Bus activation, logs go to the systemd journal:
 
 ```bash
+# View recent service logs
+journalctl --user -e --since "5 minutes ago" | grep trngdbus
+
+# Follow logs in real-time
+journalctl --user -f | grep trngdbus
+
+# View all D-Bus related logs including service activation
 journalctl --user -u dbus.service -e --since "5 minutes ago" | grep lv.lumii.trng
+```
+
+For development with more detailed logging:
+```bash
+# Run manually with debug logging
+RUST_LOG=debug ~/.local/bin/trngdbus
+
+# Or run with cargo for development
+RUST_LOG=debug cargo run
 ```
 
 ## Core algorithm
@@ -138,7 +156,7 @@ Entropy source may be buffered. In that case:
 - Bus name: `lv.lumii.trng` (session bus)
 - Object path: `/lv/lumii/trng/SourceXorAggregator`
 - Interface: `lv.lumii.trng.Rng`
-- ReadBytes(num_bytes: u64, timeout_ms: u64) -> bytes: [u8]
+- ReadBytes(num_bytes: u64, timeout_ms: u64) -> (status: i32, bytes: [u8])
 
 ## Configuration (TOML)
 

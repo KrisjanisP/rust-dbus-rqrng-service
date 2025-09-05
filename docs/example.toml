@@ -1,9 +1,10 @@
-[[sources]]
+[sources]
 combine="xor"
 
 [[sources.lrng]]
 id="linux-dev-random"
 enabled=true
+buffer_mebibytes=128
 
 [[sources.file]]
 id="idq-quantis"

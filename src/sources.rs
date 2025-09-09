@@ -74,6 +74,14 @@ impl LrngSource {
 #[async_trait]
 impl EntropySource for LrngSource {
     async fn read_bytes(&self, num_bytes: usize, timeout_ms: u64) -> Result<Vec<u8>, Error> {
+        // If buffer is disabled, directly generate from Linux (ignore timeout)
+        if self.max_buffer_size.is_none() {
+            return tokio::task::spawn_blocking(move || os_fill_rand_octets(num_bytes))
+                .await
+                .map_err(|_| Error::Unexpected)?;
+        }
+        
+        // Buffer is enabled - use buffered approach
         // Fast path: try to satisfy from buffer first
         {
             let mut buffer = self.buffer.lock().await;
@@ -119,6 +127,11 @@ impl EntropySource for LrngSource {
     }
 
     async fn return_leftover(&self, leftover: Vec<u8>) {
+        // If buffer is disabled, we can't return leftover bytes - just drop them
+        if self.max_buffer_size.is_none() {
+            return;
+        }
+        
         if !leftover.is_empty() {
             let leftover_len = leftover.len();
             let mut buffer = self.buffer.lock().await;

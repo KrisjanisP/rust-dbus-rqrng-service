@@ -108,6 +108,12 @@ impl Aggregator {
         Ok(acc)
     }
     
+    pub fn get_stats(&self) -> (u64, u64) {
+        let bytes = self.bytes_served.load(Ordering::Relaxed);
+        let requests = self.requests_served.load(Ordering::Relaxed);
+        (bytes, requests)
+    }
+    
     async fn periodic_logging(sources: Vec<Arc<dyn EntropySource>>, bytes_served: Arc<AtomicU64>, requests_served: Arc<AtomicU64>) {
         let mut interval = interval(Duration::from_secs(10));
         loop {

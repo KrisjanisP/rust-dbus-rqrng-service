@@ -46,6 +46,11 @@ impl SourceXorAggregator {
             }
         }
     }
+
+    /// GetStats returns (total_bytes_served, total_requests_served).
+    async fn get_stats(&self) -> (u64, u64) {
+        self.0.get_stats()
+    }
 }
 
 #[tokio::main]
